@@ -84,57 +84,31 @@ const mockLeads: Lead[] = [
   },
 ];
 
-let mockKeywords: Keyword[] = [
-  {
-    _id: 'kw-1',
-    keyword: 'final expense leads',
-    cron: '0 */2 * * *',
-    enabled: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString(),
-  },
-  {
-    _id: 'kw-2',
-    keyword: 'FMO switching',
-    cron: '0 8 * * *',
-    enabled: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 9).toISOString(),
-  },
-  {
-    _id: 'kw-3',
-    keyword: 'insurance lead vendor',
-    cron: '0 */6 * * *',
-    enabled: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-  },
-];
-
 export async function getLeads(): Promise<Lead[]> {
   await delay(300);
   return mockLeads.map((lead) => ({ ...lead }));
 }
 
+// Wired to the real GET/POST /keywords routes.
 export async function getKeywords(): Promise<Keyword[]> {
-  await delay(300);
-  return mockKeywords.map((keyword) => ({ ...keyword }));
+  const res = await fetch('/keywords');
+  if (!res.ok) throw new Error(`Failed to load keywords: ${res.status}`);
+  return res.json();
 }
 
 export async function addKeyword(input: { keyword: string; cron: string }): Promise<Keyword> {
-  await delay(300);
-  const keyword: Keyword = {
-    _id: `kw-${crypto.randomUUID()}`,
-    keyword: input.keyword,
-    cron: input.cron,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-  };
-  mockKeywords = [keyword, ...mockKeywords];
-  return { ...keyword };
+  const res = await fetch('/keywords', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`Failed to add keyword: ${res.status}`);
+  return res.json();
 }
 
+// No PATCH /keywords/:id route on the backend yet.
 export async function setKeywordEnabled(id: string, enabled: boolean): Promise<Keyword> {
-  await delay(300);
-  const existing = mockKeywords.find((keyword) => keyword._id === id);
-  if (!existing) throw new Error(`Keyword ${id} not found`);
-  existing.enabled = enabled;
-  return { ...existing };
+  throw new Error(
+    `Enabling/disabling keywords is not supported by the backend yet (tried to set "${id}" to ${enabled})`,
+  );
 }
