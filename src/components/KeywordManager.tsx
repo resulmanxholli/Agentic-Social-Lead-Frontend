@@ -4,7 +4,7 @@ import { describeCron } from '../lib/cron';
 
 interface KeywordManagerProps {
   keywords: Keyword[];
-  onAdd: (input: { keyword: string; cron: string }) => Promise<void>;
+  onAdd: (input: { keyword: string; cron: string; targetUrls: string[] }) => Promise<void>;
   onToggle: (id: string, enabled: boolean) => Promise<void>;
 }
 
@@ -38,6 +38,7 @@ function splitCron(expression: string): CronFieldState {
 
 const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) => {
   const [keywordInput, setKeywordInput] = useState('');
+  const [targetUrlsInput, setTargetUrlsInput] = useState('');
   const [cronInput, setCronInput] = useState(DEFAULT_CRON);
   const [cronFields, setCronFields] = useState<CronFieldState>(() => splitCron(DEFAULT_CRON));
   const [submitting, setSubmitting] = useState(false);
@@ -56,14 +57,20 @@ const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) 
     );
   };
 
+  const targetUrls = targetUrlsInput
+    .split(/[,\n]/)
+    .map((url) => url.trim())
+    .filter(Boolean);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!keywordInput.trim() || !cronInput.trim()) return;
+    if (!keywordInput.trim() || !cronInput.trim() || targetUrls.length === 0) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await onAdd({ keyword: keywordInput.trim(), cron: cronInput.trim() });
+      await onAdd({ keyword: keywordInput.trim(), cron: cronInput.trim(), targetUrls });
       setKeywordInput('');
+      setTargetUrlsInput('');
       applyPreset(DEFAULT_CRON);
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to add keyword');
@@ -100,6 +107,20 @@ const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) 
             onChange={(e) => setKeywordInput(e.target.value)}
             placeholder="e.g. final expense leads"
             className="w-56 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label htmlFor="targetUrls" className="text-xs font-medium text-gray-500">
+            Target URLs (comma or newline separated)
+          </label>
+          <textarea
+            id="targetUrls"
+            value={targetUrlsInput}
+            onChange={(e) => setTargetUrlsInput(e.target.value)}
+            placeholder="https://facebook.com/groups/insuranceagents"
+            rows={2}
+            className="w-full max-w-md rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
           />
         </div>
 
@@ -151,7 +172,7 @@ const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) 
         <div className="flex items-center gap-3">
           <button
             type="submit"
-            disabled={submitting || !keywordInput.trim() || !cronInput.trim()}
+            disabled={submitting || !keywordInput.trim() || !cronInput.trim() || targetUrls.length === 0}
             className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {submitting ? 'Adding…' : 'Add keyword'}
@@ -178,6 +199,9 @@ const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) 
                   Cron
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Target URLs
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Status
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -193,6 +217,20 @@ const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) 
                   <td className="px-4 py-3.5">
                     <div className="text-gray-700">{describeCron(kw.cron) ?? 'Custom schedule'}</div>
                     <div className="font-mono text-xs text-gray-400">{kw.cron}</div>
+                  </td>
+                  <td className="max-w-[220px] px-4 py-3.5">
+                    {kw.targetUrls.map((url) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block truncate text-xs text-blue-600 hover:underline"
+                        title={url}
+                      >
+                        {url}
+                      </a>
+                    ))}
                   </td>
                   <td className="px-4 py-3.5">
                     <span
