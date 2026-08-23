@@ -14,7 +14,7 @@ const LeadsPage: FC = () => {
         Facebook profiles matched to tracked keywords, scored by intent.
       </p>
       {loading && !data && <p className="text-sm text-gray-400">Loading leads…</p>}
-      {error && <p className="text-sm text-red-600">Failed to load leads: {error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
       {data && <LeadTable leads={data} />}
     </div>
   );

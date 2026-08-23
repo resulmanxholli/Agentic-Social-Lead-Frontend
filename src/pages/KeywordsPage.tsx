@@ -1,5 +1,5 @@
 import { type FC, useEffect, useState } from 'react';
-import { addKeyword, getKeywords, setKeywordEnabled } from '../api/client';
+import { addKeyword, getKeywords, setKeywordEnabled, updateKeyword } from '../api/client';
 import type { Keyword } from '../api/types';
 import KeywordManager from '../components/KeywordManager';
 
@@ -35,6 +35,11 @@ const KeywordsPage: FC = () => {
     setKeywords((prev) => prev.map((kw) => (kw._id === id ? updated : kw)));
   };
 
+  const handleEdit = async (id: string, updates: { keyword: string; cron: string }) => {
+    const updated = await updateKeyword(id, updates);
+    setKeywords((prev) => prev.map((kw) => (kw._id === id ? updated : kw)));
+  };
+
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
       <h1 className="mb-1 text-xl font-semibold text-gray-900">Keywords</h1>
@@ -42,9 +47,14 @@ const KeywordsPage: FC = () => {
         Terms tracked on Facebook, and the schedule each one runs on.
       </p>
       {loading && <p className="text-sm text-gray-400">Loading keywords…</p>}
-      {error && <p className="text-sm text-red-600">Failed to load keywords: {error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
       {!loading && !error && (
-        <KeywordManager keywords={keywords} onAdd={handleAdd} onToggle={handleToggle} />
+        <KeywordManager
+          keywords={keywords}
+          onAdd={handleAdd}
+          onToggle={handleToggle}
+          onEdit={handleEdit}
+        />
       )}
     </div>
   );
