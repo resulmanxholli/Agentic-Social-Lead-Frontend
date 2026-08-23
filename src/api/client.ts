@@ -96,19 +96,33 @@ export async function getKeywords(): Promise<Keyword[]> {
   return res.json();
 }
 
-export async function addKeyword(input: { keyword: string; cron: string }): Promise<Keyword> {
+export async function addKeyword(input: {
+  keyword: string;
+  cron: string;
+  targetUrls: string[];
+}): Promise<Keyword> {
   const res = await fetch('/keywords', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error(`Failed to add keyword: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error ?? `Failed to add keyword: ${res.status}`);
+  }
   return res.json();
 }
 
-// No PATCH /keywords/:id route on the backend yet.
+// Wired to the real PATCH /keywords/:id route.
 export async function setKeywordEnabled(id: string, enabled: boolean): Promise<Keyword> {
-  throw new Error(
-    `Enabling/disabling keywords is not supported by the backend yet (tried to set "${id}" to ${enabled})`,
-  );
+  const res = await fetch(`/keywords/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error ?? `Failed to update keyword: ${res.status}`);
+  }
+  return res.json();
 }

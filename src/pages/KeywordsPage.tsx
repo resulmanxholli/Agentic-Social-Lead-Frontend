@@ -25,7 +25,7 @@ const KeywordsPage: FC = () => {
     };
   }, []);
 
-  const handleAdd = async (input: { keyword: string; cron: string }) => {
+  const handleAdd = async (input: { keyword: string; cron: string; targetUrls: string[] }) => {
     const created = await addKeyword(input);
     setKeywords((prev) => [created, ...prev]);
   };

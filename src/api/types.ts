@@ -21,6 +21,7 @@ export interface Keyword {
   keyword: string;
   cron: string;
   enabled: boolean;
+  targetUrls: string[];
   createdAt: string;
 }
 
