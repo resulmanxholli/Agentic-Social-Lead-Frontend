@@ -1,11 +1,13 @@
 import { type FC, type FormEvent, useState } from 'react';
 import type { Keyword } from '../api/types';
 import { describeCron } from '../lib/cron';
+import Modal from './Modal';
 
 interface KeywordManagerProps {
   keywords: Keyword[];
   onAdd: (input: { keyword: string; cron: string; targetUrls: string[] }) => Promise<void>;
   onToggle: (id: string, enabled: boolean) => Promise<void>;
+  onEdit: (id: string, updates: { keyword: string; cron: string }) => Promise<void>;
 }
 
 const DEFAULT_CRON = '0 * * * *';
@@ -36,31 +38,112 @@ function splitCron(expression: string): CronFieldState {
   return { minute, hour, day, month, week };
 }
 
-const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) => {
+interface CronBuilderProps {
+  idPrefix: string;
+  cron: string;
+  fields: CronFieldState;
+  onPreset: (value: string) => void;
+  onFieldChange: (key: CronFieldKey, value: string) => void;
+  onApplyFields: () => void;
+}
+
+const CronBuilder: FC<CronBuilderProps> = ({
+  idPrefix,
+  cron,
+  fields,
+  onPreset,
+  onFieldChange,
+  onApplyFields,
+}) => (
+  <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium text-gray-500">Quick schedule</span>
+      <div className="flex flex-wrap gap-2">
+        {CRON_PRESETS.map((preset) => (
+          <button
+            key={preset.label}
+            type="button"
+            onClick={() => onPreset(preset.value)}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    <div className="flex flex-wrap items-end gap-3">
+      {CRON_FIELDS.map((field) => (
+        <div key={field.key} className="flex flex-col gap-1">
+          <label
+            htmlFor={`${idPrefix}-${field.key}`}
+            className="text-xs font-medium text-gray-500"
+          >
+            {field.label}
+          </label>
+          <input
+            id={`${idPrefix}-${field.key}`}
+            value={fields[field.key]}
+            onChange={(e) => onFieldChange(field.key, e.target.value || '*')}
+            className="w-16 rounded-md border border-gray-300 px-2 py-1.5 text-center font-mono text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={onApplyFields}
+        className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+      >
+        Set
+      </button>
+    </div>
+
+    <span className="text-xs text-gray-400">
+      {describeCron(cron.trim()) ?? 'Not a valid cron expression'}
+    </span>
+  </div>
+);
+
+const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle, onEdit }) => {
+  const [isAddOpen, setIsAddOpen] = useState(false);
   const [keywordInput, setKeywordInput] = useState('');
   const [targetUrlsInput, setTargetUrlsInput] = useState('');
   const [cronInput, setCronInput] = useState(DEFAULT_CRON);
   const [cronFields, setCronFields] = useState<CronFieldState>(() => splitCron(DEFAULT_CRON));
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
 
-  const applyPreset = (value: string) => {
-    setCronInput(value);
-    setCronFields(splitCron(value));
-  };
-
-  const applyCronFields = () => {
-    setCronInput(
-      `${cronFields.minute} ${cronFields.hour} ${cronFields.day} ${cronFields.month} ${cronFields.week}`,
-    );
-  };
+  const [editingKeyword, setEditingKeyword] = useState<Keyword | null>(null);
+  const [editKeywordInput, setEditKeywordInput] = useState('');
+  const [editCronInput, setEditCronInput] = useState('');
+  const [editCronFields, setEditCronFields] = useState<CronFieldState>(() => splitCron(DEFAULT_CRON));
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const targetUrls = targetUrlsInput
     .split(/[,\n]/)
     .map((url) => url.trim())
     .filter(Boolean);
+
+  const resetAddForm = () => {
+    setKeywordInput('');
+    setTargetUrlsInput('');
+    setCronInput(DEFAULT_CRON);
+    setCronFields(splitCron(DEFAULT_CRON));
+    setSubmitError(null);
+  };
+
+  const openAdd = () => {
+    resetAddForm();
+    setIsAddOpen(true);
+  };
+
+  const closeAdd = () => {
+    setIsAddOpen(false);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -69,9 +152,7 @@ const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) 
     setSubmitError(null);
     try {
       await onAdd({ keyword: keywordInput.trim(), cron: cronInput.trim(), targetUrls });
-      setKeywordInput('');
-      setTargetUrlsInput('');
-      applyPreset(DEFAULT_CRON);
+      setIsAddOpen(false);
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to add keyword');
     } finally {
@@ -91,97 +172,161 @@ const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) 
     }
   };
 
+  const openEdit = (kw: Keyword) => {
+    setEditingKeyword(kw);
+    setEditKeywordInput(kw.keyword);
+    setEditCronInput(kw.cron);
+    setEditCronFields(splitCron(kw.cron));
+    setEditError(null);
+  };
+
+  const closeEdit = () => {
+    setEditingKeyword(null);
+  };
+
+  const handleEditSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingKeyword || !editKeywordInput.trim() || !editCronInput.trim()) return;
+    setEditSubmitting(true);
+    setEditError(null);
+    try {
+      await onEdit(editingKeyword._id, {
+        keyword: editKeywordInput.trim(),
+        cron: editCronInput.trim(),
+      });
+      setEditingKeyword(null);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update keyword');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-4"
-      >
-        <div className="flex flex-col gap-1">
-          <label htmlFor="keyword" className="text-xs font-medium text-gray-500">
-            Keyword
-          </label>
-          <input
-            id="keyword"
-            value={keywordInput}
-            onChange={(e) => setKeywordInput(e.target.value)}
-            placeholder="e.g. final expense leads"
-            className="w-56 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-          />
+      <div className="flex items-center justify-between">
+        <div>
+          {toggleError && <p className="text-sm text-red-600">{toggleError}</p>}
         </div>
+        <button
+          type="button"
+          onClick={openAdd}
+          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          + Add keyword
+        </button>
+      </div>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="targetUrls" className="text-xs font-medium text-gray-500">
-            Target URLs (comma or newline separated)
-          </label>
-          <textarea
-            id="targetUrls"
-            value={targetUrlsInput}
-            onChange={(e) => setTargetUrlsInput(e.target.value)}
-            placeholder="https://facebook.com/groups/insuranceagents"
-            rows={2}
-            className="w-full max-w-md rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-medium text-gray-500">Quick schedule</span>
-          <div className="flex flex-wrap gap-2">
-            {CRON_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => applyPreset(preset.value)}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-              >
-                {preset.label}
-              </button>
-            ))}
+      <Modal open={isAddOpen} onClose={closeAdd} title="Add keyword">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="keyword" className="text-xs font-medium text-gray-500">
+              Keyword
+            </label>
+            <input
+              id="keyword"
+              value={keywordInput}
+              onChange={(e) => setKeywordInput(e.target.value)}
+              placeholder="e.g. final expense leads"
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+            />
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-end gap-3">
-          {CRON_FIELDS.map((field) => (
-            <div key={field.key} className="flex flex-col gap-1">
-              <label htmlFor={`cron-${field.key}`} className="text-xs font-medium text-gray-500">
-                {field.label}
-              </label>
-              <input
-                id={`cron-${field.key}`}
-                value={cronFields[field.key]}
-                onChange={(e) =>
-                  setCronFields((f) => ({ ...f, [field.key]: e.target.value || '*' }))
-                }
-                className="w-16 rounded-md border border-gray-300 px-2 py-1.5 text-center font-mono text-sm focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={applyCronFields}
-            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            Set
-          </button>
-        </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="targetUrls" className="text-xs font-medium text-gray-500">
+              Target URLs (comma or newline separated)
+            </label>
+            <textarea
+              id="targetUrls"
+              value={targetUrlsInput}
+              onChange={(e) => setTargetUrlsInput(e.target.value)}
+              placeholder="https://facebook.com/groups/insuranceagents"
+              rows={2}
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
 
-        <span className="text-xs text-gray-400">
-          {describeCron(cronInput.trim()) ?? 'Not a valid cron expression'}
-        </span>
+          <CronBuilder
+            idPrefix="add-cron"
+            cron={cronInput}
+            fields={cronFields}
+            onPreset={(value) => {
+              setCronInput(value);
+              setCronFields(splitCron(value));
+            }}
+            onFieldChange={(key, value) => setCronFields((f) => ({ ...f, [key]: value }))}
+            onApplyFields={() =>
+              setCronInput(
+                `${cronFields.minute} ${cronFields.hour} ${cronFields.day} ${cronFields.month} ${cronFields.week}`,
+              )
+            }
+          />
 
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={submitting || !keywordInput.trim() || !cronInput.trim() || targetUrls.length === 0}
-            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {submitting ? 'Adding…' : 'Add keyword'}
-          </button>
-          {submitError && <p className="text-sm text-red-600">{submitError}</p>}
-        </div>
-      </form>
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={
+                submitting || !keywordInput.trim() || !cronInput.trim() || targetUrls.length === 0
+              }
+              className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {submitting ? 'Adding…' : 'Add keyword'}
+            </button>
+            {submitError && <p className="text-sm text-red-600">{submitError}</p>}
+          </div>
+        </form>
+      </Modal>
 
-      {toggleError && <p className="text-sm text-red-600">{toggleError}</p>}
+      <Modal open={editingKeyword !== null} onClose={closeEdit} title="Edit keyword">
+        <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="edit-keyword" className="text-xs font-medium text-gray-500">
+              Keyword
+            </label>
+            <input
+              id="edit-keyword"
+              value={editKeywordInput}
+              onChange={(e) => setEditKeywordInput(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <CronBuilder
+            idPrefix="edit-cron"
+            cron={editCronInput}
+            fields={editCronFields}
+            onPreset={(value) => {
+              setEditCronInput(value);
+              setEditCronFields(splitCron(value));
+            }}
+            onFieldChange={(key, value) => setEditCronFields((f) => ({ ...f, [key]: value }))}
+            onApplyFields={() =>
+              setEditCronInput(
+                `${editCronFields.minute} ${editCronFields.hour} ${editCronFields.day} ${editCronFields.month} ${editCronFields.week}`,
+              )
+            }
+          />
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={editSubmitting || !editKeywordInput.trim() || !editCronInput.trim()}
+              className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {editSubmitting ? 'Saving…' : 'Save changes'}
+            </button>
+            <button
+              type="button"
+              onClick={closeEdit}
+              disabled={editSubmitting}
+              className="text-sm font-medium text-gray-500 hover:underline disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            {editError && <p className="text-sm text-red-600">{editError}</p>}
+          </div>
+        </form>
+      </Modal>
 
       {keywords.length === 0 ? (
         <div className="rounded-xl border border-gray-200 bg-white p-10 text-center text-gray-400">
@@ -245,14 +390,23 @@ const KeywordManager: FC<KeywordManagerProps> = ({ keywords, onAdd, onToggle }) 
                     {new Date(kw.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => handleToggle(kw._id, !kw.enabled)}
-                      disabled={togglingId === kw._id}
-                      className="text-sm font-medium text-blue-600 hover:underline disabled:opacity-50"
-                    >
-                      {kw.enabled ? 'Disable' : 'Enable'}
-                    </button>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(kw)}
+                        className="text-sm font-medium text-gray-500 hover:underline"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggle(kw._id, !kw.enabled)}
+                        disabled={togglingId === kw._id}
+                        className="text-sm font-medium text-blue-600 hover:underline disabled:opacity-50"
+                      >
+                        {kw.enabled ? 'Disable' : 'Enable'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

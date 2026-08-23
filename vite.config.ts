@@ -8,9 +8,10 @@ export default defineConfig({
   server: {
     proxy: {
       // Proxying avoids CORS in dev. Backend URL/port is a guess — adjust
-      // if it differs. /keywords 404s until the backend implements it.
+      // if it differs.
       '/status': process.env.VITE_BACKEND_URL ?? 'http://localhost:3000',
       '/keywords': process.env.VITE_BACKEND_URL ?? 'http://localhost:3000',
+      '/leads': process.env.VITE_BACKEND_URL ?? 'http://localhost:3000',
     },
   },
 })
